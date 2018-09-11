@@ -39,15 +39,8 @@ fn main() {
 
     // Next, fall back and try to use pkg-config if its available.
     if !target.contains("windows") {
-        match pkg_config::find_library("libcurl") {
-            Ok(lib) => {
-                for path in lib.include_paths.iter() {
-                    println!("cargo:include={}", path.display());
-                }
-                return
-            }
-            Err(e) => println!("Couldn't find libcurl from \
-                               pkgconfig ({:?}), compiling it from source...", e),
+        if try_pkg_config() {
+            return
         }
     }
 
@@ -423,4 +416,52 @@ fn cp_r(src: &Path, dst: &Path) {
             t!(fs::copy(&src, &dst));
         }
     }
+}
+
+fn try_pkg_config() -> bool {
+    let mut cfg = pkg_config::Config::new();
+    cfg.cargo_metadata(false);
+    let lib = match cfg.probe("libcurl") {
+        Ok(lib) => lib,
+        Err(e) => {
+            println!("Couldn't find libcurl from pkgconfig ({:?}), \
+                      compiling it from source...", e);
+            return false
+        }
+    };
+
+    // Not all system builds of libcurl have http2 features enabled, so if we've
+    // got a http2-requested build then we may fall back to a build from source.
+    if cfg!(feature = "http2") {
+        let output = Command::new("curl-config")
+            .arg("--features")
+            .output();
+        let output = match output {
+            Ok(out) => out,
+            Err(e) => {
+                println!("failed to run curl-config ({}), building from source", e);
+                return false
+            }
+        };
+        if !output.status.success() {
+            println!("curl-config failed: {}", output.status);
+            return false
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !stdout.contains("HTTP2") {
+            println!("failed to find http-2 feature enabled in pkg-config-found \
+                      libcurl, building from source");
+            return false
+        }
+    }
+
+    // Re-find the library to print cargo's metadata, then print some extra
+    // metadata as well.
+    cfg.cargo_metadata(true)
+        .probe("libcurl")
+        .unwrap();
+    for path in lib.include_paths.iter() {
+        println!("cargo:include={}", path.display());
+    }
+    return true
 }
