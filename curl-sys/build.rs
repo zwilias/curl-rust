@@ -205,6 +205,10 @@ fn main() {
             .define("SIZEOF_SIZE_T", "8")
             .define("SIZEOF_SSIZE_T", "8")
             .file("curl/lib/vtls/openssl.c");
+
+        if let Some(path) = env::var_os("DEP_OPENSSL_INCLUDE") {
+            cfg.include(path);
+        }
     }
 
     cfg.flag("-fvisibility=hidden");
