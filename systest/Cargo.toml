@@ -11,3 +11,6 @@ libc = "0.2"
 [build-dependencies]
 ctest = "0.2"
 cc = "1.0"
+
+[features]
+http2 = ['curl-sys/http2']
